@@ -61,6 +61,8 @@ ENT.BrowserHUD = {
 }
 
 function ENT:Initialize()
+    hook.Add("MIDI", self, self.OnMIDIEvent)
+
 	self:PrecacheMaterials()
 end
 
@@ -115,6 +117,15 @@ function ENT:Think()
 	// Send da keys to everyone
 	//self:SendKeys()
 
+end
+
+function ENT:OnMIDIEvent(command, note, velocity)
+    if !IsValid( LocalPlayer().Instrument ) || LocalPlayer().Instrument != self then return end
+
+    -- Zero velocity NOTE_ON substitutes NOTE_OFF
+    if !midi || midi.GetCommandName( command ) != "NOTE_ON" || velocity == 0 || !self.MIDIKeys || !self.MIDIKeys[note] then return end
+
+    self:OnRegisteredKeyPlayed(self.MIDIKeys[note].Sound)
 end
 
 function ENT:IsKeyTriggered( key )

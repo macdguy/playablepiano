@@ -17,6 +17,13 @@ surface.CreateFont( "InstrumentNotice", {
 	size = 30, weight = 400, antialias = true, font = "Impact"
 } )
 
+// Load the MIDI module if it exists
+if ( file.Exists("lua/bin/gmcl_midi_win32.dll", "GAME") ||
+	 file.Exists("lua/bin/gmcl_midi_linux.dll", "GAME") ||
+	 file.Exists("lua/bin/gmcl_midi_osx.dll", "GAME") ) then
+	 	require("midi")
+end
+
 // For drawing purposes
 // Override by adding MatWidth/MatHeight to key data
 ENT.DefaultMatWidth = 128
@@ -61,6 +68,11 @@ ENT.BrowserHUD = {
 }
 
 function ENT:Initialize()
+	// Open a midi device if it hasn't been opened yet
+	if ( midi && !midi.IsOpened() && table.Count(midi.GetPorts()) > 0 ) then
+		midi.Open( table.GetFirstKey( midi.GetPorts() ) )
+	end
+
     hook.Add( "MIDI", self, self.OnMIDIEvent )
 
 	self:PrecacheMaterials()

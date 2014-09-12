@@ -69,7 +69,7 @@ ENT.BrowserHUD = {
 
 function ENT:Initialize()
 	// Open a midi device if it hasn't been opened yet
-	if ( midi && !midi.IsOpened() && table.Count(midi.GetPorts()) > 0 ) then
+	if ( midi && !midi.IsOpened() && table.Count( midi.GetPorts() ) > 0 ) then
 		midi.Open( table.GetFirstKey( midi.GetPorts() ) )
 	end
 
@@ -131,7 +131,7 @@ function ENT:Think()
 
 end
 
-function ENT:OnMIDIEvent( command, note, velocity )
+function ENT:OnMIDIEvent( time, command, note, velocity )
     if !IsValid( LocalPlayer().Instrument ) || LocalPlayer().Instrument != self then return end
 
     // Zero velocity NOTE_ON substitutes NOTE_OFF

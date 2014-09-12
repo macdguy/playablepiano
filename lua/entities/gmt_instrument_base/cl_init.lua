@@ -125,7 +125,7 @@ function ENT:OnMIDIEvent( command, note, velocity )
     // Zero velocity NOTE_ON substitutes NOTE_OFF
     if !midi || midi.GetCommandName( command ) != "NOTE_ON" || velocity == 0 || !self.MIDIKeys || !self.MIDIKeys[note] then return end
 
-    self:OnRegisteredKeyPlayed( self.MIDIKeys[note].Sound )
+    self:OnRegisteredKeyPlayed( self.MIDIKeys[note].Sound, true )
 end
 
 function ENT:IsKeyTriggered( key )
@@ -136,11 +136,14 @@ function ENT:IsKeyReleased( key )
 	return self.KeysWasDown[ key ] && !self.KeysDown[ key ]
 end
 
-function ENT:OnRegisteredKeyPlayed( key )
+function ENT:OnRegisteredKeyPlayed( key, suppressSound )
 
-	// Play on the client first
-	local sound = self:GetSound( key )
-	self:EmitSound( sound, 100 )
+	if ( !suppressSound ) then
+		// Play on the client first
+		local sound = self:GetSound( key )
+
+		self:EmitSound( sound, 100 )
+	end
 
 	// Network it
 	net.Start( "InstrumentNetwork" )

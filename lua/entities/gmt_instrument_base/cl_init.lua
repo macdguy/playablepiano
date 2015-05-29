@@ -74,7 +74,7 @@ function ENT:Think()
 
 		if time>=v.timestamp then
 
-			self:EmitSound( v.sound, 90 )
+			v.ent:EmitSound( v.sound, 90 )
 
 			// Note effect
 			local eff = EffectData()
@@ -503,7 +503,7 @@ net.Receive( "InstrumentNetwork", function( length, client )
 		if sound then
 			// Add note to table of notes to be Played
 			// We do this instead of timer.Simple because the think hook is much more precise
-			table.insert( ent.QueuedNotes, { sound=sound, pos=pos, timestamp=timestamp } )
+			table.insert( ent.QueuedNotes, { ent=ent, sound=sound, pos=pos, timestamp=timestamp } )
 		end
 
 	end

@@ -46,6 +46,10 @@ ENT.ControlKeys = {
 	[KEY_LSHIFT] = function( inst, bPressed )
 		inst:ShiftMod()
 	end,
+	
+	[KEY_RSHIFT] = function( inst, bPressed )
+		inst:ShiftMod()
+	end,
 }
 
 function ENT:GetSound( snd )

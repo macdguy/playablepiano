@@ -22,18 +22,6 @@ function ENT:Initialize()
 	
 end
 
-function ENT:Think()
-
-	if !IsValid( self.Owner ) then return end
-
-	local dist = self:GetPos():Distance( self.Owner:GetPos() )
-
-	if dist > 128 then
-		self:RemoveInstOwner()
-	end
-
-end
-
 function ENT:InitializeAfter()
 end
 
@@ -41,51 +29,37 @@ local function HandleRollercoasterAnimation( vehicle, player )
 	return player:SelectWeightedSequence( ACT_GMOD_SIT_ROLLERCOASTER )
 end
 
-function ENT:TranslateOffset( vec )
-	return ( self:GetForward() * vec.x ) + ( self:GetRight() * -vec.y ) + ( self:GetUp() * vec.z )
-end
-
 function ENT:SetupChair( vecmdl, angmdl, vecvehicle, angvehicle )
 
-	local ang = self:GetAngles()
-	ang:RotateAroundAxis( ang:Forward(), 90 )
-
 	// Chair Model
-	if vecmdl then
-		vecmdl = self:TranslateOffset( vecmdl )
+	self.ChairMDL = ents.Create( "prop_physics_multiplayer" )
+	self.ChairMDL:SetModel( self.ChairModel )
+	self.ChairMDL:SetParent( self )
+	self.ChairMDL:SetPos( self:GetPos() + vecmdl )
+	self.ChairMDL:SetAngles( angmdl )
+	self.ChairMDL:DrawShadow( false )
 
-		self.ChairMDL = ents.Create( "prop_physics_multiplayer" )
-		self.ChairMDL:SetModel( self.ChairModel )
-		self.ChairMDL:SetParent( self )
-		self.ChairMDL:SetPos( self:GetPos() + vecmdl )
-		self.ChairMDL:SetAngles( self:GetAngles() + vecvehicle )
-
-		self.ChairMDL:DrawShadow( false )
-
-		self.ChairMDL:SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER )
-		
-		self.ChairMDL:Spawn()
-		self.ChairMDL:Activate()
-		self.ChairMDL:SetOwner( self )
-		
-		local phys = self.ChairMDL:GetPhysicsObject()
-		if IsValid(phys) then
-			phys:EnableMotion(false)
-			phys:Sleep()
-		end
-		
-		self.ChairMDL:SetKeyValue( "minhealthdmg", "999999" )
+	self.ChairMDL:SetCollisionGroup( COLLISION_GROUP_DEBRIS_TRIGGER )
+	
+	self.ChairMDL:Spawn()
+	self.ChairMDL:Activate()
+	self.ChairMDL:SetOwner( self )
+	
+	local phys = self.ChairMDL:GetPhysicsObject()
+	if IsValid(phys) then
+		phys:EnableMotion(false)
+		phys:Sleep()
 	end
 	
+	self.ChairMDL:SetKeyValue( "minhealthdmg", "999999" )
+	
 	// Chair Vehicle
-	vecvehicle = self:TranslateOffset( vecvehicle )
-
 	self.Chair = ents.Create( "prop_vehicle_prisoner_pod" )
 	self.Chair:SetModel( "models/nova/airboat_seat.mdl" )
 	self.Chair:SetKeyValue( "vehiclescript","scripts/vehicles/prisoner_pod.txt" )
-	self.Chair:SetPos( self:GetPos() + vecvehicle )
-	self.Chair:SetParent( self )
-	self.Chair:SetAngles( self:GetAngles() + angvehicle )
+	self.Chair:SetPos( self.ChairMDL:GetPos() + vecvehicle )
+	self.Chair:SetParent( self.ChairMDL )
+	self.Chair:SetAngles( angvehicle )
 	self.Chair:SetNotSolid( true )
 	self.Chair:SetNoDraw( true )
 	self.Chair:DrawShadow( false )
@@ -112,7 +86,7 @@ local function HookChair( ply, ent, role ) -- VXP: "role" only exists in CanPlay
 	if IsValid( inst ) && inst.Base == "gmt_instrument_base" then
 
 		if !IsValid( inst.Owner ) then
-			inst:AddInstOwner( ply )
+			inst:AddOwner( ply )
 			return true
 		else
 			if inst.Owner == ply then
@@ -128,6 +102,8 @@ local function HookChair( ply, ent, role ) -- VXP: "role" only exists in CanPlay
 
 	end
 
+	return true
+
 end
 
 // Quick fix for overriding the instrument chair seating
@@ -138,33 +114,37 @@ function ENT:Use( ply )
 
 	if IsValid( self.Owner ) then return end
 
-	self:AddInstOwner( ply )
+	self:AddOwner( ply )
 
 end
 
-function ENT:AddInstOwner( ply )
+function ENT:AddOwner( ply )
 
 	if IsValid( self.Owner ) then return end
-
-	self.Owner = ply
 
 	net.Start( "InstrumentNetwork" )
 		net.WriteEntity( self )
 		net.WriteInt( INSTNET_USE, 4 )
 	net.Send( ply )
 
-	if IsValid( self.Chair ) then
-		ply.EntryPoint = ply:GetPos()
-		ply.EntryAngles = ply:EyeAngles()
+	ply.EntryPoint = ply:GetPos()
+	ply.EntryAngles = ply:EyeAngles()
 
-		ply:EnterVehicle( self.Chair )
+	self.Owner = ply
 
-		self.Owner:SetEyeAngles( Angle( 25, 90, 0 ) )
-	end
+	ply:EnterVehicle( self.Chair )
+
+	self.Owner:SetEyeAngles( Angle( 25, 90, 0 ) )
 
 end
 
-function ENT:RemoveInstOwner()
+function ENT:Think()
+	if self.Owner and IsValid( self.Owner ) and (not self.Owner:Alive()) then
+		self:RemoveOwner()
+	end
+end
+
+function ENT:RemoveOwner()
 
 	if !IsValid( self.Owner ) then return end
 
@@ -172,50 +152,36 @@ function ENT:RemoveInstOwner()
 		net.WriteEntity( nil )
 		net.WriteInt( INSTNET_USE, 3 )
 	net.Send( self.Owner )
+		
+	self.Owner:ExitVehicle( self.Chair )
 
-	if IsValid( self.Chair ) then
-		self.Owner:ExitVehicle( self.Chair )
-
-		self.Owner:SetPos( self.Owner.EntryPoint )
-		self.Owner:SetEyeAngles( self.Owner.EntryAngles )
-	end
+	self.Owner:SetPos( self.Owner.EntryPoint )
+	self.Owner:SetEyeAngles( self.Owner.EntryAngles )
 
 	self.Owner = nil
 
 end
 
-/*function ENT:NetworkKeys( keys )
+function ENT:NetworkKey( key, timestamp )
 
 	if !IsValid( self.Owner ) then return end // no reason to broadcast it
 
-	net.Start( "InstrumentNetwork" )
-
-		net.WriteEntity( self )
-		net.WriteInt( INSTNET_HEAR, 3 )
-		net.WriteTable( keys )
-
-	net.Broadcast()
-
-end*/
-
-function ENT:NetworkKey( key )
-
-	if !IsValid( self.Owner ) then return end // no reason to broadcast it
+	// Calculate note effect position
+	local pos = string.sub( key, 2, 3 )
+	pos = math.Fit( tonumber( pos ), 1, 36, -3.8, 4 )
+	pos = self.Owner:GetPos() + Vector( -15, pos * 10, -5 ) 
 
 	net.Start( "InstrumentNetwork" )
 
 		net.WriteEntity( self )
 		net.WriteInt( INSTNET_HEAR, 3 )
 		net.WriteString( key )
+		net.WriteFloat( timestamp )
+		net.WriteVector( pos )
 
 	net.Broadcast()
 
 end
-
-// Returns the approximate "fitted" number based on linear regression.
-function math.Fit( val, valMin, valMax, outMin, outMax )
-	return ( val - valMin ) * ( outMax - outMin ) / ( valMax - valMin ) + outMin
-end	
 
 net.Receive( "InstrumentNetwork", function( length, client )
 
@@ -230,7 +196,7 @@ net.Receive( "InstrumentNetwork", function( length, client )
 		// Filter out non-instruments
 		if ent.Base != "gmt_instrument_base" then return end
 
-		// This instrument doesn't have an owner...
+		// This instrument does not have an owner...
 		if !IsValid( ent.Owner ) then return end
 
 		// Check if the player is actually the owner of the instrument
@@ -238,24 +204,17 @@ net.Receive( "InstrumentNetwork", function( length, client )
 
 			// Gather note
 			local key = net.ReadString()
+
+			// Calculate timing
+			local timestamp = net.ReadFloat()
+			if not client.inst_timing_offset then
+				client.inst_timing_offset = os.clock() - timestamp
+			end
+
+			timestamp = timestamp + client.inst_timing_offset
 		
 			// Send it!!
-			ent:NetworkKey( key )
-
-			// Offset the note effect
-			local pos = string.sub( key, 2, 3 )
-			pos = math.Fit( tonumber( pos ), 1, 36, -3.8, 4 )
-
-			// Note effect
-			local eff = EffectData()
-				eff:SetOrigin( client:GetPos() + client:GetForward() + Vector( -15, pos * 10, -5 ) )
-			util.Effect( "musicnotes", eff, true, true )
-
-			// Gather notes
-			/*local keys = net.ReadTable()
-		
-			// Send them!!
-			ent:NetworkKeys( keys )*/
+			ent:NetworkKey( key, timestamp )
 
 		end
 
@@ -274,12 +233,12 @@ concommand.Add( "instrument_leave", function( ply, cmd, args )
 	// Filter out non-instruments
 	if !IsValid( ent ) || ent.Base != "gmt_instrument_base" then return end
 
-	// This instrument doesn't have an owner...
+	// This instrument does not have an owner...
 	if !IsValid( ent.Owner ) then return end
 
 	// Leave instrument
 	if ply == ent.Owner then
-		ent:RemoveInstOwner()
+		ent:RemoveOwner()
 	end
 
 end )

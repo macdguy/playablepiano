@@ -8,7 +8,7 @@ ENT.Category		= "Fun + Games"
 ENT.Spawnable		= true
 ENT.AdminSpawnable 	= true
 
-ENT.Model		= Model( "models/sims/piano.mdl" )
+ENT.Model		= Model( "models/fishy/furniture/piano.mdl" )
 ENT.SoundDir	= "GModTower/lobby/instruments/piano/"
 
 local darker = Color( 100, 100, 100, 150 )

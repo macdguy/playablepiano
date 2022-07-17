@@ -60,11 +60,32 @@ ENT.BrowserHUD = {
 	Height = 768,
 }
 
+ENT.QueuedNotes = {}
+
 function ENT:Initialize()
 	self:PrecacheMaterials()
 end
 
 function ENT:Think()
+
+	local time = os.clock()
+
+	for k,v in pairs(self.QueuedNotes) do
+
+		if time>=v.timestamp then
+
+			v.ent:EmitSound( v.sound, 90 )
+
+			// Note effect
+			local eff = EffectData()
+			eff:SetOrigin(v.pos)
+			util.Effect( "musicnotes", eff, true, true )
+
+			table.remove(self.QueuedNotes, k)
+
+		end
+
+	end
 
 	if !IsValid( LocalPlayer().Instrument ) || LocalPlayer().Instrument != self then return end
 
@@ -131,23 +152,23 @@ function ENT:OnRegisteredKeyPlayed( key )
 	local sound = self:GetSound( key )
 	self:EmitSound( sound, 100 )
 
+	//Note effect
+	local pos = string.sub( key, 2, 3 )
+	pos = math.Fit( tonumber( pos ), 1, 36, -3.8, 4 )
+	pos = LocalPlayer():GetPos() + Vector( -15, pos * 10, -5 ) 
+	local eff = EffectData()
+	eff:SetOrigin(pos)
+	util.Effect( "musicnotes", eff, true, true )
+
 	// Network it
 	net.Start( "InstrumentNetwork" )
 
 		net.WriteEntity( self )
 		net.WriteInt( INSTNET_PLAY, 3 )
 		net.WriteString( key )
+		net.WriteFloat(os.clock())
 
 	net.SendToServer()
-
-	// Add the notes (limit to max notes)
-	/*if #self.KeysToSend < self.MaxKeys then
-
-		if !table.HasValue( self.KeysToSend, key ) then // only different notes, please
-			table.insert( self.KeysToSend, key )
-		end
-
-	end*/
 
 end
 
@@ -275,7 +296,7 @@ function ENT:DrawHUD()
 
 end
 
-// This is so I don't have to do GetTextureID in the table EACH TIME, ugh
+// This is so I do not have to do GetTextureID in the table EACH TIME, ugh
 function ENT:PrecacheMaterials()
 
 	if !self.Keys then return end
@@ -321,7 +342,7 @@ function ENT:OpenSheetMusic()
 
 	self.Browser:OpenURL( url )
 
-	// This is delayed because otherwise it won't load at all
+	// This is delayed because otherwise it will not load at all
 	// for some silly reason...
 	timer.Simple( .1, function()
 
@@ -415,20 +436,16 @@ hook.Add( "HUDPaint", "InstrumentPaint", function()
 
 		// HUD
 		local inst = LocalPlayer().Instrument
-		if inst.DrawHUD then
-			inst:DrawHUD()
-		end
+		inst:DrawHUD()
 
 		// Notice bar
-		if inst.PrintName then
-			local name = inst.PrintName or "INSTRUMENT"
-			name = string.upper( name )
+		local name = inst.PrintName or "INSTRUMENT"
+		name = string.upper( name )
 
-			surface.SetDrawColor( 0, 0, 0, 180 )
-			surface.DrawRect( 0, ScrH() - 60, ScrW(), 60 )
+		surface.SetDrawColor( 0, 0, 0, 180 )
+		surface.DrawRect( 0, ScrH() - 60, ScrW(), 60 )
 
-			draw.SimpleText( "PRESS TAB TO LEAVE THE " .. name, "InstrumentNotice", ScrW() / 2, ScrH() - 35, Color(255, 255, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1 )
-		end
+		draw.SimpleText( "PRESS TAB TO LEAVE THE " .. name, "InstrumentNotice", ScrW() / 2, ScrH() - 35, Color(255, 255, 255), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER, 1 )
 
 	end
 
@@ -437,7 +454,7 @@ end )
 // Override regular keys
 hook.Add( "PlayerBindPress", "InstrumentHook", function( ply, bind, pressed )
 
-	if IsValid( ply ) && IsValid( ply.Instrument ) then
+	if IsValid( ply.Instrument ) then
 		return true
 	end
 
@@ -455,49 +472,39 @@ net.Receive( "InstrumentNetwork", function( length, client )
 			LocalPlayer().Instrument:Shutdown()
 		end
 
-		ent.DelayKey = CurTime() + .1 // delay to the key a bit so they don't play on use key
+		ent.DelayKey = CurTime() + .1 // delay to the key a bit so they do not play on use key
 		LocalPlayer().Instrument = ent
 
 	// Play the notes for everyone else
 	elseif enum == INSTNET_HEAR then
 
-		// Instrument doesn't exist
+		// Instrument does not exist
 		if !IsValid( ent ) then return end
-
-		// Don't play for the owner, they've already heard it!
-		if IsValid( LocalPlayer().Instrument ) && LocalPlayer().Instrument == ent then
-			return
-		end
-
-		if !ent.GetSound then return end
 
 		// Gather note
 		local key = net.ReadString()
 		local sound = ent:GetSound( key )
-			
-		if sound then
-			ent:EmitSound( sound, 80 )
+		local timestamp = net.ReadFloat()
+		local pos = net.ReadVector()
+
+		// Do not play for the owner
+		if IsValid( LocalPlayer().Instrument ) && LocalPlayer().Instrument == ent then
+			return
 		end
 
-		// Gather notes
-		/*local keys = net.ReadTable()
-	
-		for i=1, #keys do
+		// Calculate timing offset - how much farther ahead the server clock is to ours
+		if not inst_timing_offset then
+			inst_timing_offset = timestamp - os.clock()
+		end
 
-			local key = keys[1]
-			local sound = ent:GetSound( key )
+		//Calculate true time when sound should play
+		timestamp = timestamp + INST_LATENCY - inst_timing_offset
 			
-			if sound then
-				ent:EmitSound( sound, 80 )
-
-				local eff = EffectData()
-				eff:SetOrigin( ent:GetPos() + Vector(0, 0, 60) )
-				eff:SetEntity( ent )
-
-				util.Effect( "musicnotes", eff, true, true )
-			end
-			
-		end*/
+		if sound then
+			// Add note to table of notes to be Played
+			// We do this instead of timer.Simple because the think hook is much more precise
+			table.insert( ent.QueuedNotes, { ent=ent, sound=sound, pos=pos, timestamp=timestamp } )
+		end
 
 	end
 

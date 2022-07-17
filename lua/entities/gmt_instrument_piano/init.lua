@@ -4,10 +4,10 @@ include( "shared.lua" )
 
 function ENT:InitializeAfter()
 
-    self:SetupChair( 
-        nil, nil, //Vector( 75, 0, 0 ), Angle( 0, 0, 0 ), // chair model
-        Vector( 28, -25, 20 ), Angle( 0, 90, 0 ) // actual chair
-    )
+	self:SetupChair( 
+		Vector( 75, 0, 0 ), Angle( 0, 0, 0 ), // chair model
+		Vector( 0, 10, 24 ), Angle( 0, 90, 0 ) // actual chair
+	)
 
 end
 

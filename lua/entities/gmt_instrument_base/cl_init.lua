@@ -17,6 +17,13 @@ surface.CreateFont( "InstrumentNotice", {
 	size = 30, weight = 400, antialias = true, font = "Impact"
 } )
 
+// Load the MIDI module if it exists
+if ( file.Exists("lua/bin/gmcl_midi_win32.dll", "GAME") ||
+	 file.Exists("lua/bin/gmcl_midi_linux.dll", "GAME") ||
+	 file.Exists("lua/bin/gmcl_midi_osx.dll", "GAME") ) then
+	 	require("midi")
+end
+
 // For drawing purposes
 // Override by adding MatWidth/MatHeight to key data
 ENT.DefaultMatWidth = 128
@@ -61,6 +68,13 @@ ENT.BrowserHUD = {
 }
 
 function ENT:Initialize()
+	// Open a midi device if it hasn't been opened yet
+	if ( midi && !midi.IsOpened() && table.Count( midi.GetPorts() ) > 0 ) then
+		midi.Open( table.GetFirstKey( midi.GetPorts() ) )
+	end
+
+    hook.Add( "MIDI", self, self.OnMIDIEvent )
+
 	self:PrecacheMaterials()
 end
 
@@ -83,13 +97,13 @@ function ENT:Think()
 
 		// Check for note keys
 		if self:IsKeyTriggered( key ) then
-		
+
 			if self.ShiftMode && keyData.Shift then
 				self:OnRegisteredKeyPlayed( keyData.Shift.Sound )
 			elseif !self.ShiftMode then
 				self:OnRegisteredKeyPlayed( keyData.Sound )
 			end
-			
+
 		end
 
 	end
@@ -104,7 +118,7 @@ function ENT:Think()
 		if self:IsKeyTriggered( key ) then
 			keyData( self, true )
 		end
-		
+
 		// was a control key released?
 		if self:IsKeyReleased( key ) then
 			keyData( self, false )
@@ -117,6 +131,15 @@ function ENT:Think()
 
 end
 
+function ENT:OnMIDIEvent( time, command, note, velocity )
+    if !IsValid( LocalPlayer().Instrument ) || LocalPlayer().Instrument != self then return end
+
+    // Zero velocity NOTE_ON substitutes NOTE_OFF
+    if !midi || midi.GetCommandName( command ) != "NOTE_ON" || velocity == 0 || !self.MIDIKeys || !self.MIDIKeys[note] then return end
+
+    self:OnRegisteredKeyPlayed( self.MIDIKeys[note].Sound, true )
+end
+
 function ENT:IsKeyTriggered( key )
 	return self.KeysDown[ key ] && !self.KeysWasDown[ key ]
 end
@@ -125,11 +148,14 @@ function ENT:IsKeyReleased( key )
 	return self.KeysWasDown[ key ] && !self.KeysDown[ key ]
 end
 
-function ENT:OnRegisteredKeyPlayed( key )
+function ENT:OnRegisteredKeyPlayed( key, suppressSound )
 
-	// Play on the client first
-	local sound = self:GetSound( key )
-	self:EmitSound( sound, 100 )
+	if ( !suppressSound ) then
+		// Play on the client first
+		local sound = self:GetSound( key )
+
+		self:EmitSound( sound, 100 )
+	end
 
 	// Network it
 	net.Start( "InstrumentNetwork" )
@@ -181,10 +207,10 @@ function ENT:DrawKey( mainX, mainY, key, keyData, bShiftMode )
 		   ( !self.ShiftMode && !bShiftMode && input.IsKeyDown( key ) ) then
 
 			surface.SetTexture( self.KeyMaterialIDs[ keyData.Material ] )
-			surface.DrawTexturedRect( mainX + keyData.X, mainY + keyData.Y, 
+			surface.DrawTexturedRect( mainX + keyData.X, mainY + keyData.Y,
 									  self.DefaultMatWidth, self.DefaultMatHeight )
 		end
-		
+
 	end
 
 	// Draw keys
@@ -196,7 +222,7 @@ function ENT:DrawKey( mainX, mainY, key, keyData, bShiftMode )
 
 		if ( self.ShiftMode && bShiftMode && input.IsKeyDown( key ) ) ||
 		   ( !self.ShiftMode && !bShiftMode && input.IsKeyDown( key ) ) then
-		   
+
 			color = self.DefaultTextColorActive
 			if keyData.AColor then color = keyData.AColor end
 		else
@@ -206,8 +232,8 @@ function ENT:DrawKey( mainX, mainY, key, keyData, bShiftMode )
 		// Override positions, if needed
 		if keyData.TextX then offsetX = keyData.TextX end
 		if keyData.TextY then offsetY = keyData.TextY end
-		
-		draw.DrawText( keyData.Label, "InstrumentKeyLabel", 
+
+		draw.DrawText( keyData.Label, "InstrumentKeyLabel",
 						mainX + keyData.X + offsetX,
 						mainY + keyData.Y + offsetY,
 						color, TEXT_ALIGN_CENTER )
@@ -242,9 +268,9 @@ function ENT:DrawHUD()
 
 	// Draw keys (over top of main)
 	for key, keyData in pairs( self.Keys ) do
-	
+
 		self:DrawKey( mainX, mainY, key, keyData, false )
-		
+
 		if keyData.Shift then
 			self:DrawKey( mainX, mainY, key, keyData.Shift, true )
 		end
@@ -253,8 +279,8 @@ function ENT:DrawHUD()
 	// Sheet music help
 	if !ValidPanel( self.Browser ) && self.BrowserHUD.Show then
 
-		draw.DrawText( "SPACE FOR SHEET MUSIC", "InstrumentKeyLabel", 
-						mainX + ( mainWidth / 2 ), mainY + 60, 
+		draw.DrawText( "SPACE FOR SHEET MUSIC", "InstrumentKeyLabel",
+						mainX + ( mainWidth / 2 ), mainY + 60,
 						self.DefaultTextInfoColor, TEXT_ALIGN_CENTER )
 
 	end
@@ -262,14 +288,14 @@ function ENT:DrawHUD()
 	// Advanced mode
 	if self.AllowAdvancedMode && !self.AdvancedMode then
 
-		draw.DrawText( "CONTROL FOR ADVANCED MODE", "InstrumentKeyLabel", 
-						mainX + ( mainWidth / 2 ), mainY + mainHeight + 30, 
+		draw.DrawText( "CONTROL FOR ADVANCED MODE", "InstrumentKeyLabel",
+						mainX + ( mainWidth / 2 ), mainY + mainHeight + 30,
 						self.DefaultTextInfoColor, TEXT_ALIGN_CENTER )
-						
+
 	elseif self.AllowAdvancedMode && self.AdvancedMode then
-	
-		draw.DrawText( "CONTROL FOR BASIC MODE", "InstrumentKeyLabel", 
-						mainX + ( mainWidth / 2 ), mainY + mainHeight + 30, 
+
+		draw.DrawText( "CONTROL FOR BASIC MODE", "InstrumentKeyLabel",
+						mainX + ( mainWidth / 2 ), mainY + mainHeight + 30,
 						self.DefaultTextInfoColor, TEXT_ALIGN_CENTER )
 	end
 
@@ -312,11 +338,11 @@ function ENT:OpenSheetMusic()
 	end
 
 	local url = self.BrowserHUD.URL
-	
+
 	if self.AdvancedMode then
 		url = self.BrowserHUD.URL .. "?&adv=1"
 	end
-	
+
 	local x = self.BrowserHUD.X - ( width / 2 )
 
 	self.Browser:OpenURL( url )
@@ -381,7 +407,7 @@ end
 function ENT:Shutdown()
 
 	self:CloseSheetMusic()
-	
+
 	self.AdvancedMode = false
 	self.ShiftMode = false
 
@@ -394,12 +420,12 @@ end
 
 function ENT:ToggleAdvancedMode()
 	self.AdvancedMode = !self.AdvancedMode
-	
+
 	if ValidPanel( self.Browser ) then
 		self:CloseSheetMusic()
 		self:OpenSheetMusic()
 	end
-	
+
 end
 
 function ENT:ToggleShiftMode()
@@ -474,19 +500,19 @@ net.Receive( "InstrumentNetwork", function( length, client )
 		// Gather note
 		local key = net.ReadString()
 		local sound = ent:GetSound( key )
-			
+
 		if sound then
 			ent:EmitSound( sound, 80 )
 		end
 
 		// Gather notes
 		/*local keys = net.ReadTable()
-	
+
 		for i=1, #keys do
 
 			local key = keys[1]
 			local sound = ent:GetSound( key )
-			
+
 			if sound then
 				ent:EmitSound( sound, 80 )
 
@@ -496,7 +522,7 @@ net.Receive( "InstrumentNetwork", function( length, client )
 
 				util.Effect( "musicnotes", eff, true, true )
 			end
-			
+
 		end*/
 
 	end
